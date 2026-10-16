@@ -1,0 +1,1365 @@
+Description: "Laboratorio IA generativa en AWS: Parcero, agente Strands en AgentCore Runtime con RAG, DynamoDB y frontend React + Cognito"
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Tu usuario
+        Parameters:
+          - CorreoUsuario
+          - UsuarioDemo
+      - Label:
+          default: Opciones
+        Parameters:
+          - ModeloId
+          - PrefijoDominio
+          - Version
+          - CodigoFuente
+Parameters:
+  CorreoUsuario:
+    Type: String
+    AllowedPattern: ^[^@\s]+@[^@\s]+\.[^@\s]+$
+    ConstraintDescription: Debe ser un correo válido.
+    Description: Tu correo. Cognito te envía ahí la contraseña temporal y el enlace de la aplicación.
+  UsuarioDemo:
+    Type: String
+    Default: camilo
+    AllowedPattern: ^[a-z0-9_-]{3,30}$
+    ConstraintDescription: "Entre 3 y 30 caracteres: minúsculas, números, - o _."
+    Description: Usuario para iniciar sesión. El álbum de ejemplo se carga a su nombre.
+  ModeloId:
+    Type: String
+    Default: global.amazon.nova-2-lite-v1:0
+    Description: Modelo o perfil de inferencia de Bedrock para el agente (debe tener acceso habilitado).
+  PrefijoDominio:
+    Type: String
+    Default: mundial
+    AllowedPattern: ^[a-z0-9-]{3,30}$
+    ConstraintDescription: "Entre 3 y 30 caracteres: minúsculas, números o -."
+    Description: Prefijo del dominio de inicio de sesión de Cognito (se le agrega el ID de la cuenta).
+  Version:
+    Type: String
+    Default: "1"
+    Description: Cámbialo (2, 3...) para volver a construir el agente y el frontend con el código actual.
+  CodigoFuente:
+    Type: String
+    Default: https://github.com/Cerozob/generativeai-luisamigo/archive/refs/heads/main.zip
+    AllowedPattern: ^https://.+
+    ConstraintDescription: Debe ser una URL https.
+    Description: URL https del zip del laboratorio (por ejemplo, el zip de GitHub).
+Resources:
+  ArtefactosBucketE02F9B5A:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  ArtefactosBucketPolicy0660DE44:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: ArtefactosBucketE02F9B5A
+      PolicyDocument:
+        Statement:
+          - Action: s3:*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+            Effect: Deny
+            Principal:
+              AWS: "*"
+            Resource:
+              - Fn::GetAtt:
+                  - ArtefactosBucketE02F9B5A
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - ArtefactosBucketE02F9B5A
+                        - Arn
+                    - /*
+        Version: "2012-10-17"
+  WebBucket12880F5B:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  WebBucketPolicy95D08FAA:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: WebBucket12880F5B
+      PolicyDocument:
+        Statement:
+          - Action: s3:*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+            Effect: Deny
+            Principal:
+              AWS: "*"
+            Resource:
+              - Fn::GetAtt:
+                  - WebBucket12880F5B
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - WebBucket12880F5B
+                        - Arn
+                    - /*
+          - Action: s3:GetObject
+            Condition:
+              StringEquals:
+                AWS:SourceArn:
+                  Fn::Join:
+                    - ""
+                    - - "arn:"
+                      - Ref: AWS::Partition
+                      - ":cloudfront::"
+                      - Ref: AWS::AccountId
+                      - :distribution/
+                      - Ref: DistribucionD29B498B
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - WebBucket12880F5B
+                      - Arn
+                  - /*
+        Version: "2012-10-17"
+  RutasSpa1F10377A:
+    Type: AWS::CloudFront::Function
+    Properties:
+      AutoPublish: true
+      FunctionCode: |-
+        function handler(event) {
+          var request = event.request;
+          if (request.uri.indexOf('.') === -1) { request.uri = '/index.html'; }
+          return request;
+        }
+      FunctionConfig:
+        Comment:
+          Fn::Join:
+            - ""
+            - - Ref: AWS::Region
+              - AgenteMundialRutasSpa2EFA7562
+        Runtime: cloudfront-js-1.0
+      Name:
+        Fn::Join:
+          - ""
+          - - Ref: AWS::Region
+            - AgenteMundialRutasSpa2EFA7562
+  DistribucionOrigin1S3OriginAccessControlB9C6F681:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: AgenteMundialDistribucionOrigin1S3OriginAccessControlC8AD2F45
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+  DistribucionD29B498B:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        CacheBehaviors:
+          - AllowedMethods:
+              - GET
+              - HEAD
+              - OPTIONS
+              - PUT
+              - PATCH
+              - POST
+              - DELETE
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+            Compress: true
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+            PathPattern: /runtimes/*
+            TargetOriginId: AgenteMundialDistribucionOrigin2EFD239C7
+            ViewerProtocolPolicy: https-only
+        Comment: "Parcero: frontend del laboratorio y proxy al agente"
+        DefaultCacheBehavior:
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN:
+                Fn::GetAtt:
+                  - RutasSpa1F10377A
+                  - FunctionARN
+          TargetOriginId: AgenteMundialDistribucionOrigin1F5D0A6A9
+          ViewerProtocolPolicy: redirect-to-https
+        DefaultRootObject: index.html
+        Enabled: true
+        HttpVersion: http2
+        IPV6Enabled: true
+        Origins:
+          - DomainName:
+              Fn::GetAtt:
+                - WebBucket12880F5B
+                - RegionalDomainName
+            Id: AgenteMundialDistribucionOrigin1F5D0A6A9
+            OriginAccessControlId:
+              Fn::GetAtt:
+                - DistribucionOrigin1S3OriginAccessControlB9C6F681
+                - Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - CustomOriginConfig:
+              OriginProtocolPolicy: https-only
+              OriginReadTimeout: 60
+              OriginSSLProtocols:
+                - TLSv1.2
+            DomainName:
+              Fn::Join:
+                - ""
+                - - bedrock-agentcore.
+                  - Ref: AWS::Region
+                  - .amazonaws.com
+            Id: AgenteMundialDistribucionOrigin2EFD239C7
+  DocumentosBucket748C15B5:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders:
+              - "*"
+            AllowedMethods:
+              - PUT
+            AllowedOrigins:
+              - Fn::Join:
+                  - ""
+                  - - https://
+                    - Fn::GetAtt:
+                        - DistribucionD29B498B
+                        - DomainName
+              - http://localhost:5173
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  DocumentosBucketPolicy3D5A6AC0:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket:
+        Ref: DocumentosBucket748C15B5
+      PolicyDocument:
+        Statement:
+          - Action: s3:*
+            Condition:
+              Bool:
+                aws:SecureTransport: "false"
+            Effect: Deny
+            Principal:
+              AWS: "*"
+            Resource:
+              - Fn::GetAtt:
+                  - DocumentosBucket748C15B5
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - DocumentosBucket748C15B5
+                        - Arn
+                    - /*
+        Version: "2012-10-17"
+  KnowledgeBaseRoleA2B317B9:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount:
+                  Ref: AWS::AccountId
+              ArnLike:
+                aws:SourceArn:
+                  Fn::Join:
+                    - ""
+                    - - "arn:"
+                      - Ref: AWS::Partition
+                      - ":bedrock:"
+                      - Ref: AWS::Region
+                      - ":"
+                      - Ref: AWS::AccountId
+                      - :knowledge-base/*
+            Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+        Version: "2012-10-17"
+  KnowledgeBaseRoleDefaultPolicyB3F66209:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - DocumentosBucket748C15B5
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - DocumentosBucket748C15B5
+                        - Arn
+                    - /*
+        Version: "2012-10-17"
+      PolicyName: KnowledgeBaseRoleDefaultPolicyB3F66209
+      Roles:
+        - Ref: KnowledgeBaseRoleA2B317B9
+  KnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    Properties:
+      Description: Documentos del Mundial 2026 para el agente de la clase
+      KnowledgeBaseConfiguration:
+        ManagedKnowledgeBaseConfiguration:
+          EmbeddingModelType: MANAGED
+        Type: MANAGED
+      Name:
+        Fn::Join:
+          - ""
+          - - Ref: AWS::StackName
+            - -mundial
+      RoleArn:
+        Fn::GetAtt:
+          - KnowledgeBaseRoleA2B317B9
+          - Arn
+    DependsOn:
+      - KnowledgeBaseRoleDefaultPolicyB3F66209
+      - KnowledgeBaseRoleA2B317B9
+  DocumentosDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      DataSourceConfiguration:
+        ManagedKnowledgeBaseConnectorConfiguration:
+          ConnectorParameters:
+            type: S3
+            version: "1"
+            connectionConfiguration:
+              bucketName:
+                Ref: DocumentosBucket748C15B5
+              bucketOwnerAccountId:
+                Ref: AWS::AccountId
+            filterConfiguration:
+              inclusionPrefixes:
+                - mundial/
+        Type: MANAGED_KNOWLEDGE_BASE_CONNECTOR
+      KnowledgeBaseId:
+        Fn::GetAtt:
+          - KnowledgeBase
+          - KnowledgeBaseId
+      Name: documentos-mundial
+  AlbumTable447B4929:
+    Type: AWS::DynamoDB::GlobalTable
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: owner
+          AttributeType: S
+        - AttributeName: codigo
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: owner
+          KeyType: HASH
+        - AttributeName: codigo
+          KeyType: RANGE
+      Replicas:
+        - Region:
+            Ref: AWS::Region
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  CatalogoTableD574827E:
+    Type: AWS::DynamoDB::GlobalTable
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: codigo
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: codigo
+          KeyType: HASH
+      Replicas:
+        - Region:
+            Ref: AWS::Region
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  MemoriaServiceRoleA41A91BC:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount:
+                  Ref: AWS::AccountId
+              ArnLike:
+                aws:SourceArn:
+                  Fn::Join:
+                    - ""
+                    - - "arn:"
+                      - Ref: AWS::Partition
+                      - ":bedrock-agentcore:"
+                      - Ref: AWS::Region
+                      - ":"
+                      - Ref: AWS::AccountId
+                      - :memory/AgenteMundial_memoria*
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+        Version: "2012-10-17"
+  MemoriaMemory3C9198FD:
+    Type: AWS::BedrockAgentCore::Memory
+    Properties:
+      Description: Memoria de corto plazo de cada conversacion
+      EventExpiryDuration: 7
+      MemoryExecutionRoleArn:
+        Fn::GetAtt:
+          - MemoriaServiceRoleA41A91BC
+          - Arn
+      Name: AgenteMundial_memoria
+  UserPool6BA7E5F2:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+        InviteMessageTemplate:
+          EmailMessage:
+            Fn::Join:
+              - ""
+              - - Hola. Entra a https://
+                - Fn::GetAtt:
+                    - DistribucionD29B498B
+                    - DomainName
+                - " con el usuario {username} y la contraseña temporal {####}. Te pedirá una contraseña nueva."
+          EmailSubject: Tu acceso a Parcero, el agente del Mundial 2026
+      AliasAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      EmailVerificationMessage: The verification code to your new account is {####}
+      EmailVerificationSubject: Verify your new account
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireSymbols: false
+      SmsVerificationMessage: The verification code to your new account is {####}
+      UserPoolTier: ESSENTIALS
+      UsernameConfiguration:
+        CaseSensitive: false
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailMessage: The verification code to your new account is {####}
+        EmailSubject: Verify your new account
+        SmsMessage: The verification code to your new account is {####}
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  UserPoolDominio9391E37C:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain:
+        Fn::Join:
+          - "-"
+          - - Ref: PrefijoDominio
+            - Ref: AWS::AccountId
+      ManagedLoginVersion: 2
+      UserPoolId:
+        Ref: UserPool6BA7E5F2
+  UserPoolWebClient4C9370B0:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthScopes:
+        - openid
+        - email
+        - profile
+      CallbackURLs:
+        - Fn::Join:
+            - ""
+            - - https://
+              - Fn::GetAtt:
+                  - DistribucionD29B498B
+                  - DomainName
+              - /
+        - http://localhost:5173/
+      GenerateSecret: false
+      LogoutURLs:
+        - Fn::Join:
+            - ""
+            - - https://
+              - Fn::GetAtt:
+                  - DistribucionD29B498B
+                  - DomainName
+              - /
+        - http://localhost:5173/
+      SupportedIdentityProviders:
+        - COGNITO
+      UserPoolId:
+        Ref: UserPool6BA7E5F2
+  EstiloLogin:
+    Type: AWS::Cognito::ManagedLoginBranding
+    Properties:
+      ClientId:
+        Ref: UserPoolWebClient4C9370B0
+      UseCognitoProvidedValues: true
+      UserPoolId:
+        Ref: UserPool6BA7E5F2
+    DependsOn:
+      - UserPoolDominio9391E37C
+  UsuarioEstudiante:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      DesiredDeliveryMediums:
+        - EMAIL
+      UserAttributes:
+        - Name: email
+          Value:
+            Ref: CorreoUsuario
+        - Name: email_verified
+          Value: "true"
+      UserPoolId:
+        Ref: UserPool6BA7E5F2
+      Username:
+        Ref: UsuarioDemo
+  ConstruccionProyectoRoleAA7C6D96:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+        Version: "2012-10-17"
+  ConstruccionProyectoRoleDefaultPolicy7CFB02CC:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:CreateLogGroup
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":logs:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :log-group:/aws/codebuild/
+                    - Ref: ConstruccionProyecto05972599
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":logs:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :log-group:/aws/codebuild/
+                    - Ref: ConstruccionProyecto05972599
+                    - :*
+          - Action:
+              - codebuild:CreateReportGroup
+              - codebuild:CreateReport
+              - codebuild:UpdateReport
+              - codebuild:BatchPutTestCases
+              - codebuild:BatchPutCodeCoverages
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:"
+                  - Ref: AWS::Partition
+                  - ":codebuild:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :report-group/
+                  - Ref: ConstruccionProyecto05972599
+                  - -*
+          - Action:
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+              - s3:Abort*
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - ArtefactosBucketE02F9B5A
+                      - Arn
+                  - /*
+          - Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+              - s3:DeleteObject*
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+              - s3:Abort*
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - WebBucket12880F5B
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - WebBucket12880F5B
+                        - Arn
+                    - /*
+          - Action: s3:DeleteObject*
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - WebBucket12880F5B
+                      - Arn
+                  - /*
+          - Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+              - s3:DeleteObject*
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+              - s3:Abort*
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - DocumentosBucket748C15B5
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - DocumentosBucket748C15B5
+                        - Arn
+                    - /*
+          - Action:
+              - dynamodb:BatchWriteItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - AlbumTable447B4929
+                - Arn
+          - Action:
+              - dynamodb:BatchWriteItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - CatalogoTableD574827E
+                - Arn
+          - Action: cloudfront:CreateInvalidation
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:"
+                  - Ref: AWS::Partition
+                  - ":cloudfront::"
+                  - Ref: AWS::AccountId
+                  - :distribution/
+                  - Ref: DistribucionD29B498B
+          - Action:
+              - bedrock:GetDataSource
+              - bedrock:StartIngestionJob
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - KnowledgeBase
+                - KnowledgeBaseArn
+        Version: "2012-10-17"
+      PolicyName: ConstruccionProyectoRoleDefaultPolicy7CFB02CC
+      Roles:
+        - Ref: ConstruccionProyectoRoleAA7C6D96
+  ConstruccionProyecto05972599:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Cache:
+        Type: NO_CACHE
+      Description: Empaqueta el agente y publica el frontend y los datos del laboratorio
+      EncryptionKey: alias/aws/s3
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux-x86_64-standard:5.0
+        ImagePullCredentialsType: CODEBUILD
+        PrivilegedMode: false
+        Type: LINUX_CONTAINER
+      ServiceRole:
+        Fn::GetAtt:
+          - ConstruccionProyectoRoleAA7C6D96
+          - Arn
+      Source:
+        BuildSpec: |-
+          {
+            "version": "0.2",
+            "phases": {
+              "install": {
+                "runtime-versions": {
+                  "nodejs": "22",
+                  "python": "3.13"
+                }
+              },
+              "build": {
+                "commands": [
+                  "mkdir -p /tmp/lab && cd /tmp/lab",
+                  "case \"$CODIGO_FUENTE\" in s3://*) aws s3 cp \"$CODIGO_FUENTE\" codigo.zip ;; *) curl -fsSL \"$CODIGO_FUENTE\" -o codigo.zip ;; esac",
+                  "unzip -q codigo.zip -d codigo",
+                  "cd \"$(dirname \"$(find codigo -maxdepth 5 -name construir.sh -path \"*/scripts/*\" | head -1)\")/..\"",
+                  "bash scripts/construir.sh \"$ETAPA\""
+                ]
+              }
+            }
+          }
+        Type: NO_SOURCE
+      TimeoutInMinutes: 20
+  ConstruccionEjecutorServiceRole329E8AB7:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+        Version: "2012-10-17"
+      ManagedPolicyArns:
+        - Fn::Join:
+            - ""
+            - - "arn:"
+              - Ref: AWS::Partition
+              - :iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+  ConstruccionEjecutorServiceRoleDefaultPolicyA10B3DE1:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - codebuild:StartBuild
+              - codebuild:BatchGetBuilds
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - ConstruccionProyecto05972599
+                - Arn
+          - Action:
+              - s3:ListBucket
+              - s3:ListBucketVersions
+              - s3:DeleteObject
+              - s3:DeleteObjectVersion
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - ArtefactosBucketE02F9B5A
+                  - Arn
+              - Fn::GetAtt:
+                  - WebBucket12880F5B
+                  - Arn
+              - Fn::GetAtt:
+                  - DocumentosBucket748C15B5
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - ArtefactosBucketE02F9B5A
+                        - Arn
+                    - /*
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - WebBucket12880F5B
+                        - Arn
+                    - /*
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - DocumentosBucket748C15B5
+                        - Arn
+                    - /*
+        Version: "2012-10-17"
+      PolicyName: ConstruccionEjecutorServiceRoleDefaultPolicyA10B3DE1
+      Roles:
+        - Ref: ConstruccionEjecutorServiceRole329E8AB7
+  ConstruccionEjecutor6A5EEEC5:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        ZipFile: |
+          
+          import time
+          import boto3
+          import cfnresponse
+
+          codebuild = boto3.client("codebuild")
+          s3 = boto3.resource("s3")
+
+
+          def handler(event, context):
+              props = event["ResourceProperties"]
+              fisico = props["Etapa"]  # fijo por etapa: un cambio de id haría que CloudFormation borre el anterior
+              try:
+                  if event["RequestType"] == "Delete":
+                      # Los buckets deben quedar vacíos para que CloudFormation pueda borrarlos.
+                      for bucket in props.get("VaciarBuckets", []):
+                          try:
+                              s3.Bucket(bucket).object_versions.delete()
+                          except Exception as error:
+                              print(f"No se pudo vaciar {bucket}: {error}")
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, fisico)
+                      return
+                  variables = [{"name": k, "value": v, "type": "PLAINTEXT"} for k, v in props["Variables"].items()]
+                  build = codebuild.start_build(projectName=props["Proyecto"], environmentVariablesOverride=variables)["build"]
+                  print(f"Build {build['id']} iniciado")
+                  while build["buildStatus"] == "IN_PROGRESS":
+                      if context.get_remaining_time_in_millis() < 30000:
+                          raise RuntimeError(f"El build {build['id']} no terminó a tiempo")
+                      time.sleep(15)
+                      build = codebuild.batch_get_builds(ids=[build["id"]])["builds"][0]
+                  if build["buildStatus"] != "SUCCEEDED":
+                      raise RuntimeError(f"CodeBuild terminó en {build['buildStatus']}: revisa los logs del build {build['id']}")
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, fisico)
+              except Exception as error:
+                  print(error)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {}, fisico, reason=str(error)[:500])
+      Description: "Custom resource: ejecuta una etapa de CodeBuild y espera el resultado"
+      Handler: index.handler
+      Role:
+        Fn::GetAtt:
+          - ConstruccionEjecutorServiceRole329E8AB7
+          - Arn
+      Runtime: python3.13
+      Timeout: 900
+    DependsOn:
+      - ConstruccionEjecutorServiceRoleDefaultPolicyA10B3DE1
+      - ConstruccionEjecutorServiceRole329E8AB7
+  ConstruccionPaqueteAgenteC522033F:
+    Type: Custom::Construccion
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+          - ConstruccionEjecutor6A5EEEC5
+          - Arn
+      Proyecto:
+        Ref: ConstruccionProyecto05972599
+      Etapa: agente
+      Version:
+        Ref: Version
+      Variables:
+        ETAPA: agente
+        CODIGO_FUENTE:
+          Ref: CodigoFuente
+        BUCKET_ARTEFACTOS:
+          Ref: ArtefactosBucketE02F9B5A
+        CLAVE_AGENTE:
+          Fn::Join:
+            - ""
+            - - agente/v
+              - Ref: Version
+              - /agente.zip
+      VaciarBuckets:
+        - Ref: ArtefactosBucketE02F9B5A
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  ConstruccionPublicarWeb38B055FE:
+    Type: Custom::Construccion
+    Properties:
+      ServiceToken:
+        Fn::GetAtt:
+          - ConstruccionEjecutor6A5EEEC5
+          - Arn
+      Proyecto:
+        Ref: ConstruccionProyecto05972599
+      Etapa: web
+      Version:
+        Ref: Version
+      Variables:
+        ETAPA: web
+        CODIGO_FUENTE:
+          Ref: CodigoFuente
+        CONFIG_FRONTEND:
+          Fn::Join:
+            - ""
+            - - '{"region":"'
+              - Ref: AWS::Region
+              - '","userPoolId":"'
+              - Ref: UserPool6BA7E5F2
+              - '","userPoolClientId":"'
+              - Ref: UserPoolWebClient4C9370B0
+              - '","cognitoDomain":"'
+              - Ref: UserPoolDominio9391E37C
+              - .auth.
+              - Ref: AWS::Region
+              - .amazoncognito.com","agentUrl":"/runtimes/
+              - Fn::GetAtt:
+                  - AgenteRuntime044614B8
+                  - AgentRuntimeId
+              - /invocations?qualifier=DEFAULT&accountId=
+              - Ref: AWS::AccountId
+              - '"}'
+        BUCKET_WEB:
+          Ref: WebBucket12880F5B
+        BUCKET_DOCS:
+          Ref: DocumentosBucket748C15B5
+        DISTRIBUCION:
+          Ref: DistribucionD29B498B
+        TABLA_ALBUM:
+          Ref: AlbumTable447B4929
+        TABLA_CATALOGO:
+          Ref: CatalogoTableD574827E
+        USUARIO_DEMO:
+          Ref: UsuarioDemo
+        KB_ID:
+          Fn::GetAtt:
+            - KnowledgeBase
+            - KnowledgeBaseId
+        DS_ID:
+          Fn::GetAtt:
+            - DocumentosDataSource
+            - DataSourceId
+      VaciarBuckets:
+        - Ref: WebBucket12880F5B
+        - Ref: DocumentosBucket748C15B5
+    UpdateReplacePolicy: Delete
+    DeletionPolicy: Delete
+  AgenteRuntimeExecutionRoleABC35604:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount:
+                  Ref: AWS::AccountId
+              ArnLike:
+                aws:SourceArn:
+                  Fn::Join:
+                    - ""
+                    - - "arn:"
+                      - Ref: AWS::Partition
+                      - ":bedrock-agentcore:"
+                      - Ref: AWS::Region
+                      - ":"
+                      - Ref: AWS::AccountId
+                      - :runtime/AgenteMundial_agente*
+            Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+        Version: "2012-10-17"
+      Description: Execution role for Bedrock Agent Core Runtime
+      MaxSessionDuration: 28800
+    DependsOn:
+      - ConstruccionPaqueteAgenteC522033F
+  AgenteRuntimeExecutionRoleDefaultPolicy0803703A:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyDocument:
+        Statement:
+          - Action:
+              - logs:DescribeLogStreams
+              - logs:CreateLogGroup
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:"
+                  - Ref: AWS::Partition
+                  - ":logs:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :log-group:/aws/bedrock-agentcore/runtimes/*
+            Sid: LogGroupAccess
+          - Action: logs:DescribeLogGroups
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:"
+                  - Ref: AWS::Partition
+                  - ":logs:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :log-group:*
+            Sid: DescribeLogGroups
+          - Action:
+              - logs:CreateLogStream
+              - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - "arn:"
+                  - Ref: AWS::Partition
+                  - ":logs:"
+                  - Ref: AWS::Region
+                  - ":"
+                  - Ref: AWS::AccountId
+                  - :log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*
+            Sid: LogStreamAccess
+          - Action:
+              - xray:PutTraceSegments
+              - xray:PutTelemetryRecords
+              - xray:GetSamplingRules
+              - xray:GetSamplingTargets
+            Effect: Allow
+            Resource: "*"
+            Sid: XRayAccess
+          - Action: cloudwatch:PutMetricData
+            Condition:
+              StringEquals:
+                cloudwatch:namespace: bedrock-agentcore
+            Effect: Allow
+            Resource: "*"
+            Sid: CloudWatchMetrics
+          - Action:
+              - bedrock-agentcore:GetWorkloadAccessToken
+              - bedrock-agentcore:GetWorkloadAccessTokenForJWT
+              - bedrock-agentcore:GetWorkloadAccessTokenForUserId
+            Effect: Allow
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":bedrock-agentcore:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :workload-identity-directory/default
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":bedrock-agentcore:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :workload-identity-directory/default/workload-identity/*
+            Sid: GetAgentAccessToken
+          - Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+            Effect: Allow
+            Resource:
+              - Fn::GetAtt:
+                  - ArtefactosBucketE02F9B5A
+                  - Arn
+              - Fn::Join:
+                  - ""
+                  - - Fn::GetAtt:
+                        - ArtefactosBucketE02F9B5A
+                        - Arn
+                    - /*
+          - Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Effect: Allow
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - :bedrock:*::foundation-model/*
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - :bedrock:::foundation-model/*
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":bedrock:"
+                    - Ref: AWS::Region
+                    - ":"
+                    - Ref: AWS::AccountId
+                    - :inference-profile/*
+          - Action:
+              - bedrock:Retrieve
+              - bedrock:GetDataSource
+              - bedrock:StartIngestionJob
+              - bedrock:GetIngestionJob
+              - bedrock:ListIngestionJobs
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - KnowledgeBase
+                - KnowledgeBaseArn
+          - Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:Query
+              - dynamodb:GetItem
+              - dynamodb:Scan
+              - dynamodb:ConditionCheckItem
+              - dynamodb:BatchWriteItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:DescribeTable
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - AlbumTable447B4929
+                - Arn
+          - Action:
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - AlbumTable447B4929
+                - Arn
+          - Action:
+              - dynamodb:BatchGetItem
+              - dynamodb:Query
+              - dynamodb:GetItem
+              - dynamodb:Scan
+              - dynamodb:ConditionCheckItem
+              - dynamodb:DescribeTable
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - CatalogoTableD574827E
+                - Arn
+          - Action:
+              - dynamodb:GetRecords
+              - dynamodb:GetShardIterator
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - CatalogoTableD574827E
+                - Arn
+          - Action:
+              - bedrock-agentcore:GetEvent
+              - bedrock-agentcore:ListEvents
+              - bedrock-agentcore:ListActors
+              - bedrock-agentcore:ListSessions
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - MemoriaMemory3C9198FD
+                - MemoryArn
+          - Action: bedrock-agentcore:CreateEvent
+            Effect: Allow
+            Resource:
+              Fn::GetAtt:
+                - MemoriaMemory3C9198FD
+                - MemoryArn
+          - Action:
+              - s3:PutObject
+              - s3:PutObjectLegalHold
+              - s3:PutObjectRetention
+              - s3:PutObjectTagging
+              - s3:PutObjectVersionTagging
+              - s3:Abort*
+            Effect: Allow
+            Resource:
+              Fn::Join:
+                - ""
+                - - Fn::GetAtt:
+                      - DocumentosBucket748C15B5
+                      - Arn
+                  - /mundial/subidos/*
+          - Action:
+              - s3:GetObject*
+              - s3:GetBucket*
+              - s3:List*
+            Effect: Allow
+            Resource:
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":s3:::"
+                    - Ref: ArtefactosBucketE02F9B5A
+              - Fn::Join:
+                  - ""
+                  - - "arn:"
+                    - Ref: AWS::Partition
+                    - ":s3:::"
+                    - Ref: ArtefactosBucketE02F9B5A
+                    - /*
+        Version: "2012-10-17"
+      PolicyName: AgenteRuntimeExecutionRoleDefaultPolicy0803703A
+      Roles:
+        - Ref: AgenteRuntimeExecutionRoleABC35604
+    DependsOn:
+      - ConstruccionPaqueteAgenteC522033F
+  AgenteRuntime044614B8:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeArtifact:
+        CodeConfiguration:
+          Code:
+            S3:
+              Bucket:
+                Ref: ArtefactosBucketE02F9B5A
+              Prefix:
+                Fn::Join:
+                  - ""
+                  - - agente/v
+                    - Ref: Version
+                    - /agente.zip
+          EntryPoint:
+            - opentelemetry-instrument
+            - main.py
+          Runtime: PYTHON_3_13
+      AgentRuntimeName: AgenteMundial_agente
+      AuthorizerConfiguration:
+        CustomJWTAuthorizer:
+          AllowedClients:
+            - Ref: UserPoolWebClient4C9370B0
+          DiscoveryUrl:
+            Fn::Join:
+              - ""
+              - - https://cognito-idp.
+                - Ref: AWS::Region
+                - .amazonaws.com/
+                - Ref: UserPool6BA7E5F2
+                - /.well-known/openid-configuration
+      Description: "Parcero: agente Strands del Mundial 2026 con RAG y album en DynamoDB"
+      EnvironmentVariables:
+        MODEL_ID:
+          Ref: ModeloId
+        KNOWLEDGE_BASE_ID:
+          Fn::GetAtt:
+            - KnowledgeBase
+            - KnowledgeBaseId
+        DATA_SOURCE_ID:
+          Fn::GetAtt:
+            - DocumentosDataSource
+            - DataSourceId
+        DOCS_BUCKET:
+          Ref: DocumentosBucket748C15B5
+        TABLE_NAME:
+          Ref: AlbumTable447B4929
+        CATALOGO_TABLE:
+          Ref: CatalogoTableD574827E
+        MEMORY_ID:
+          Fn::GetAtt:
+            - MemoriaMemory3C9198FD
+            - MemoryId
+        AGENT_OBSERVABILITY_ENABLED: "true"
+        OTEL_PYTHON_DISTRO: aws_distro
+        OTEL_PYTHON_CONFIGURATOR: aws_configurator
+      LifecycleConfiguration: {}
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      ProtocolConfiguration: HTTP
+      RequestHeaderConfiguration:
+        RequestHeaderAllowlist:
+          - Authorization
+      RoleArn:
+        Fn::GetAtt:
+          - AgenteRuntimeExecutionRoleABC35604
+          - Arn
+    DependsOn:
+      - AgenteRuntimeExecutionRoleDefaultPolicy0803703A
+      - AgenteRuntimeExecutionRoleABC35604
+      - ConstruccionPaqueteAgenteC522033F
+Outputs:
+  UrlAplicacion:
+    Description: Abre esta URL e inicia sesión
+    Value:
+      Fn::Join:
+        - ""
+        - - https://
+          - Fn::GetAtt:
+              - DistribucionD29B498B
+              - DomainName
+  Usuario:
+    Value:
+      Ref: UsuarioDemo
+  AgentRuntimeArn:
+    Value:
+      Fn::GetAtt:
+        - AgenteRuntime044614B8
+        - AgentRuntimeArn
+  KnowledgeBaseId:
+    Value:
+      Fn::GetAtt:
+        - KnowledgeBase
+        - KnowledgeBaseId
+  DataSourceId:
+    Value:
+      Fn::GetAtt:
+        - DocumentosDataSource
+        - DataSourceId
+  TablaAlbum:
+    Value:
+      Ref: AlbumTable447B4929
+  TablaCatalogo:
+    Value:
+      Ref: CatalogoTableD574827E
+  BucketDocumentos:
+    Value:
+      Ref: DocumentosBucket748C15B5
+  UserPoolId:
+    Value:
+      Ref: UserPool6BA7E5F2
+

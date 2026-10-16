@@ -1,0 +1,7 @@
+{
+  "region": "us-east-1",
+  "userPoolId": "us-east-1_XXXXXXXXX",
+  "userPoolClientId": "xxxxxxxxxxxxxxxxxxxxxxxxxx",
+  "cognitoDomain": "mundial-123456789012.auth.us-east-1.amazoncognito.com",
+  "agentUrl": "/runtimes/AgenteMundial_agente-XXXXXXXXXX/invocations?qualifier=DEFAULT&accountId=123456789012"
+}
