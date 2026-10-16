@@ -39,16 +39,16 @@ def usuario_del_token(context: RequestContext) -> str:
     """Lee el usuario del access token de Cognito (header Authorization, permitido en el runtime).
 
     No se verifica la firma: AgentCore ya validó el token (firma, emisor, expiración y cliente) antes de
-    llamar al agente. Sin token (pruebas locales) el usuario es "camilo".
+    llamar al agente. Sin token (pruebas locales) el usuario es "estudiante".
     """
     token = (context.request_headers or {}).get("Authorization", "").removeprefix("Bearer ").strip()
     claims = {}
     if token.count(".") == 2:
         carga = token.split(".")[1]
         claims = json.loads(base64.urlsafe_b64decode(carga + "=" * (-len(carga) % 4)))
-    usuario = claims.get("username") or claims.get("cognito:username") or "camilo"
+    usuario = claims.get("username") or claims.get("cognito:username") or "estudiante"
     # Solo letras, números, "-" y "_": es la partition key del álbum y el actorId de AgentCore Memory.
-    return re.sub(r"[^a-z0-9_-]+", "-", usuario.strip().lower()).strip("-") or "camilo"
+    return re.sub(r"[^a-z0-9_-]+", "-", usuario.strip().lower()).strip("-") or "estudiante"
 
 
 def crear_agente(session_id: str, actor_id: str) -> Agent:

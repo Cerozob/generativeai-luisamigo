@@ -86,7 +86,7 @@ Fíjate en lo que **no** tuviste que hacer: elegir un vector store, configurar e
    | Parámetro | Qué poner |
    |---|---|
    | `CorreoUsuario` | Tu correo. Ahí llega la contraseña temporal. |
-   | `UsuarioDemo` | Tu usuario para entrar. Déjalo en `camilo` para tener el álbum de ejemplo con ese nombre, o pon el tuyo (el álbum de ejemplo se carga a tu nombre). |
+   | `UsuarioDemo` | Tu usuario para entrar. Déjalo en `estudiante` o pon el tuyo, en minúsculas. El álbum de ejemplo se carga a ese nombre. |
    | `ModeloId` | Déjalo en `global.amazon.nova-2-lite-v1:0`. |
    | `PrefijoDominio`, `Version`, `CodigoFuente` | Déjalos como están. |
 

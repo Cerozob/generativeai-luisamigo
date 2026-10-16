@@ -22,7 +22,7 @@ Parameters:
     Description: Tu correo. Cognito te envía ahí la contraseña temporal y el enlace de la aplicación.
   UsuarioDemo:
     Type: String
-    Default: camilo
+    Default: estudiante
     AllowedPattern: ^[a-z0-9_-]{3,30}$
     ConstraintDescription: "Entre 3 y 30 caracteres: minúsculas, números, - o _."
     Description: Usuario para iniciar sesión. El álbum de ejemplo se carga a su nombre.

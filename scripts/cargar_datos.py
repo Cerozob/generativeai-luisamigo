@@ -5,7 +5,7 @@
   3. Primera ingesta de la base de conocimiento, si se pasan --kb y --ds.
 
 Ejecutar a mano (desde la raíz del laboratorio):
-  python scripts/cargar_datos.py --tabla-album <tabla> --tabla-catalogo <tabla> --usuario camilo
+  python scripts/cargar_datos.py --tabla-album <tabla> --tabla-catalogo <tabla> --usuario estudiante
 """
 
 import argparse

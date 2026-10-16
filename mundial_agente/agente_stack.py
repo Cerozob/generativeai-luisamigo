@@ -52,7 +52,7 @@ class AgenteMundialStack(Stack):
             constraint_description="Debe ser un correo válido.",
         )
         usuario = CfnParameter(
-            self, "UsuarioDemo", type="String", default="camilo",
+            self, "UsuarioDemo", type="String", default="estudiante",
             description="Usuario para iniciar sesión. El álbum de ejemplo se carga a su nombre.",
             allowed_pattern=r"^[a-z0-9_-]{3,30}$",
             constraint_description="Entre 3 y 30 caracteres: minúsculas, números, - o _.",
